@@ -1,5 +1,14 @@
 import optparse 
 
+# output colors
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+LIGHT_PURPLE = '\033[94m'
+PURPLE = '\033[95m'
+BLUE = '\033[96m'
+ENDC = '\033[0m'
+
 def parse_description_file(filename):
 	try:
 		f = open(filename, "r")
@@ -16,24 +25,37 @@ def parse_description_file(filename):
 	return results
 
 def parse_apdu_command(line, command_descriptions):
+	#print line
 	command_bytes = line.strip().split(" ")
 	command_bytes_len = len(command_bytes)
-	cla = command_bytes[0]
+	# CLA | INS | P1 | P2 
+	cla = command_bytes[0] 
 	ins = command_bytes[1]
 	p1 = command_bytes[2]
 	p2 = command_bytes[3]
+	lc = None
+	le = None
+	data = None
+	desc = "(NOT FOUND)"
 	
 	if command_bytes_len == 5:
 		le = command_bytes[4]
 	elif command_bytes_len > 5:
-		lc = int("0x" + command_bytes[5],0)
-		if command_bytes_len > 5 + lc:
-			le = int("0x" + command_bytes[5+lc], 0)   
+		lc = command_bytes[4] 
+		lc_int = int("0x" + lc,0) 
+		if command_bytes_len > 5 + lc_int: # CLA | INS | P1 | P2 | LC | DATA | LE
+			le = command_bytes[5+lc_int]
+			data = command_bytes[5:-1]   
+		else: # CLA | INS | P1 | P2 | LC | DATA
+			data = command_bytes[5:] 
 			
+	# search description
 	for cd in command_descriptions:
 		if ins == cd[2]: # INS
-			return ins + " : " + cd[0] + " (" + cd[1] + ")" # INS : NAME (DESC) 
-	return ins + " :  (NOT FOUND)" # INS : (NOT FOUND)
+			desc = cd[0] + " (" + cd[1] + ")"
+			break
+	
+	return desc,cla,ins,p1,p2,lc,le,data
 	# TO-DO:
 	#	- PARSE COMMANDS DEPENDING ON CLA, P1 AND P2 VALUES 
 
@@ -41,15 +63,67 @@ def parse_apdu_response(line, response_descriptions, last_apdu_command=None):
 	response_bytes = line.strip().split(" ")
 	sw1 = response_bytes[-2]
 	sw2 = response_bytes[-1]
-		
+	data = None
+	desc = "(NOT FOUND)"
+	category = None
+	
 	for rd in response_descriptions:
 		if sw1 == rd[0] and sw2 == rd[1]: # SW1, SW2
-			return sw1 + "" + sw2 + " : " + rd[3] + " [" + rd[2] + "]" # SW1SW2 : NAME [TYPE]
-	return sw1 + "" + sw2 + " : (NOT FOUND)" # SW1SW2 : (NOT FOUND)
+			 desc = rd[3] + " [" + rd[2] + "]"
+			 category = rd[2]
+			 break
+	response_bytes_len = len(response_bytes)
+	if response_bytes_len > 2:
+		data = response_bytes[2:]
+	return desc, category, sw1, sw2, data
 	# TO-DO: 
 	# 	- RECOGNIZE SWs THAT INCLUDE XX VALUES
 	#   - PARSE CUSTOM RESPONSE CODES DEPENDING ON LAST APDU COMMAND
-
+	
+def show_apdu_command(desc, cla, ins, p1, p2, lc, le, data, colors):
+	print (ins + " : " + desc + "\n") # INS : INS_NAME (INS_DESC) 
+	
+	if colors:
+		cla = RED + cla + ENDC
+		#ins = GREEN + ins + ENDC
+		p1 = LIGHT_PURPLE + p1 + ENDC
+		p2 = LIGHT_PURPLE + p2 + ENDC
+		if lc is not None:
+			lc = GREEN + lc + ENDC
+		if le is not None:
+			le = BLUE + le + ENDC
+	
+	line = "\t" + cla + " " + ins + " " + p1 + " "	+ p2
+	if lc is not None:
+		line += " " + str(lc) 
+	if data is not None:
+		line += " " + (" ").join(data)
+	if le is not None:
+		line += " " + le
+	print line + "\n"
+		
+def show_apdu_response(desc, category, sw1, sw2, data, colors):
+	print (sw1 + " " + sw2 + " : " + desc + "\n") # SW1SW2 : DESC
+	
+	if colors:
+		if category == "E": # error 
+			sw1 = RED + sw1 + ENDC
+			sw2 = RED + sw2 + ENDC
+		if category == "W": # warning
+			sw1 = YELLOW + sw1 + ENDC
+			sw2 = YELLOW + sw2 + ENDC
+		if category == "I": # info
+			sw1 = GREEN + sw1 + ENDC
+			sw2 = GREEN + sw2 + ENDC
+		if category == "S": # security
+			sw1 = BLUE + sw1 + ENDC
+			sw2 = BLUE + sw2 + ENDC						
+	
+	line = "\t"
+	if data is not None:
+		line += " ".join(data) + " "
+	print line + sw1 + " " + sw2 + "\n"
+	
 def main():
 	parser = optparse.OptionParser('usage %prog -i <input_file>')
 	parser.add_option('-i','--input', dest='input_file', type='string', help='specify input file')
@@ -60,6 +134,8 @@ def main():
 	
 	parser.add_option('-C', '--command-descriptions', dest='command_descriptions', type='string', help='specify custom command descriptions file')
 	parser.add_option('-R', '--response-descriptions', dest='response_descriptions', type='string', help='specify custom response descriptions file')
+
+	parser.add_option('-T', '--colors', action='store_true', dest='colors', default=False, help='show terminal output in different colors')	
 
 	(options, args) = parser.parse_args()
 	
@@ -72,6 +148,8 @@ def main():
 	
 	command_descriptions = None
 	response_descriptions = None
+	
+	colors = options.colors
 	
 	# input file
 	if options.input_file == None:
@@ -107,31 +185,31 @@ def main():
 			response_descriptions = parse_description_file("response_descriptions.txt")
 		
 	# parse adpu lines
-	is_next_command = True # this var is used to iterate between commands and responses 
+	is_next_command = not just_responses
+
 	for apdu_line in apdu_lines:
 		apdu_line = apdu_line.strip()
 		# apdu command
-		if just_commands:
-			result = parse_apdu_command(apdu_line, command_descriptions)
+		if is_next_command:
+			desc,cla,ins,p1,p2,lc,le,data = parse_apdu_command(apdu_line, command_descriptions)
+			last_apdu_command = apdu_line
+			is_next_command = just_commands			
+			# show parsed results
+			show_apdu_command(desc, cla, ins, p1, p2, lc, le, data, colors)
+			# write output to output file
+			if output_file != None:
+				output_file.write(ins + " : " + desc + ")\n") # INS : INS_NAME (INS_DESC) 
+				output_file.write("\t" + apdu_line + "\n")
 		# apdu response
-		elif just_responses:			
-			result = parse_apdu_response(apdu_line, response_descriptions, last_apdu_command)
-		# apdu commands and responses
-		else:
-			if is_next_command:
-				result = parse_apdu_command(apdu_line, command_descriptions)
-				last_apdu_command = apdu_line
-				is_next_command = False
-			else:
-				result = parse_apdu_response(apdu_line, response_descriptions, last_apdu_command)
-				last_apdu_command = None
-				is_next_command = True 
-		# show parsed results
-		print result
-		print "\t" + apdu_line
-		if output_file != None:
-			output_file.write(result + "\n")
-			output_file.write("\t" + apdu_line + "\n")
+		else:			
+			desc, category, sw1, sw2, data = parse_apdu_response(apdu_line, response_descriptions, last_apdu_command)
+			is_next_command = not just_responses	
+			# show parsed results
+			show_apdu_response(desc, category, sw1, sw2, data, colors)
+			# write output to output file
+			if output_file != None:
+				output_file.write(sw1 + "" + sw2 + " : " + desc + "\n") # SW1SW2 : CODE_DESC 
+				output_file.write("\t" + apdu_line + "\n")
 	
 	# close output files
 	if output_file != None:

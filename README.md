@@ -36,11 +36,11 @@ Setting output file:
 
 Parsing every input file entry as APDU command:
 
-<code>python apdu_parser.py -i sample_files/default_log.txt -c</code>
+<code>python apdu_parser.py -i sample_files/commands_log.txt -c</code>
 
 Parsing every input file entry as APDU response:
 
-<code>python apdu_parser.py -i sample_files/default_log.txt -r</code>
+<code>python apdu_parser.py -i sample_files/responses_log.txt -r</code>
 
 Setting custom command descriptions file:
 
@@ -49,6 +49,11 @@ Setting custom command descriptions file:
 Setting custom command responses file:
 
 <code>python apdu_parser.py -i sample_files/default_log.txt -R sample_files/custom_responses_descriptions.txt</code>
+
+Show output results in differents colors in terminal (just works in Linux / Mac):
+
+<code>python apdu_parser.py -i sample_files/default_log.txt -T
+
 
 ## Requirements
 
