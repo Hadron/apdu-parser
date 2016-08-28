@@ -25,56 +25,68 @@ def parse_description_file(filename):
 	return results
 
 def parse_apdu_command(line, command_descriptions):
-	#print line
 	command_bytes = line.strip().split(" ")
 	command_bytes_len = len(command_bytes)
-	# CLA | INS | P1 | P2 
+	desc = "(NOT FOUND)"
+		
+	# header: CLA | INS | P1 | P2 
 	cla = command_bytes[0] 
 	ins = command_bytes[1]
 	p1 = command_bytes[2]
 	p2 = command_bytes[3]
+	
+	# body: [ LC | DATA ] | [ LE ]
 	lc = None
 	le = None
-	data = None
-	desc = "(NOT FOUND)"
+	data = None	
 	
-	if command_bytes_len == 5:
+	if command_bytes_len == 5: # LE
 		le = command_bytes[4]
 	elif command_bytes_len > 5:
 		lc = command_bytes[4] 
 		lc_int = int("0x" + lc,0) 
-		if command_bytes_len > 5 + lc_int: # CLA | INS | P1 | P2 | LC | DATA | LE
+		if command_bytes_len > 5 + lc_int: # LC | DATA | LE
 			le = command_bytes[5+lc_int]
 			data = command_bytes[5:-1]   
-		else: # CLA | INS | P1 | P2 | LC | DATA
+		else: # LC | DATA
 			data = command_bytes[5:] 
+	
+	# parse CLA (TO-DO)
 			
-	# search description
+	# parse IN
 	for cd in command_descriptions:
 		if ins == cd[2]: # INS
-			desc = cd[0] + " (" + cd[1] + ")"
+			desc = cd[0] + " (" + cd[1] + ")" # INS NAME (INS DESC)
 			break
 	
-	return desc,cla,ins,p1,p2,lc,le,data
-	# TO-DO:
-	#	- PARSE COMMANDS DEPENDING ON CLA, P1 AND P2 VALUES 
+	# parse P1, P2 (TO-DO)
+	
+	# TO-DO parse DATA (TO-DO)
+	
+	return desc,cla,ins,p1,p2,lc,le,data 
 
 def parse_apdu_response(line, response_descriptions, last_apdu_command=None):
 	response_bytes = line.strip().split(" ")
-	sw1 = response_bytes[-2]
-	sw2 = response_bytes[-1]
-	data = None
 	desc = "(NOT FOUND)"
 	category = None
 	
-	for rd in response_descriptions:
-		if sw1 == rd[0] and sw2 == rd[1]: # SW1, SW2
-			 desc = rd[3] + " [" + rd[2] + "]"
-			 category = rd[2]
-			 break
+	# data field: DATA (optional)
+	data = None
 	response_bytes_len = len(response_bytes)
 	if response_bytes_len > 2:
 		data = response_bytes[2:]
+		
+	# trailer: SW1 | SW2
+	sw1 = response_bytes[-2]
+	sw2 = response_bytes[-1]
+	
+	# parse SW1 SW2 codes
+	for rd in response_descriptions:
+		if sw1 == rd[0] and sw2 == rd[1]: # SW1, SW2
+			desc = rd[3] + " [" + rd[2] + "]"
+			category = rd[2]
+			break
+	
 	return desc, category, sw1, sw2, data
 	# TO-DO: 
 	# 	- RECOGNIZE SWs THAT INCLUDE XX VALUES
@@ -129,8 +141,8 @@ def main():
 	parser.add_option('-i','--input', dest='input_file', type='string', help='specify input file')
 	parser.add_option('-o','--output', dest='output_file', type='string', help='specify output file')
 	
-	parser.add_option('-c', '--commands', action='store_true', dest='just_commands', default=False, help='specify if input file just contains APDU commands')
-	parser.add_option('-r', '--responses', action='store_true', dest='just_responses', default=False, help='specify if input file just contains APDU responses')
+	parser.add_option('-c', '--commands', action='store_true', dest='commands_only', default=False, help='specify if input file contains only APDU commands')
+	parser.add_option('-r', '--responses', action='store_true', dest='responses_only', default=False, help='specify if input file contains only APDU responses')
 	
 	parser.add_option('-C', '--command-descriptions', dest='command_descriptions', type='string', help='specify custom command descriptions file')
 	parser.add_option('-R', '--response-descriptions', dest='response_descriptions', type='string', help='specify custom response descriptions file')
@@ -143,8 +155,8 @@ def main():
 	output_file = None	
 	last_apdu_command = None
 	
-	just_commands = options.just_commands
-	just_responses = options.just_responses
+	commands_only = options.commands_only
+	responses_only = options.responses_only
 	
 	command_descriptions = None
 	response_descriptions = None
@@ -165,27 +177,27 @@ def main():
 	if options.output_file != None:
 		output_file = open(options.output_file,"w")
 
-	if just_commands and options.just_responses:
+	if commands_only and options.responses_only:
 		print parser.usage
 		print "[*] Error: --commands and --responses options cannot be set at the same time"
 		exit(0)
 
 	# custom command descriptions
-	if not just_responses:
+	if not responses_only:
 		if options.command_descriptions != None:
 			command_descriptions = parse_description_file(options.command_descriptions)
 		else:
 			command_descriptions = parse_description_file("command_descriptions.txt")
 	
 	# custom response descriptions
-	if not just_commands:
+	if not commands_only:
 		if options.response_descriptions != None:
 			response_descriptions = parse_description_file(options.response_descriptions)
 		else:
 			response_descriptions = parse_description_file("response_descriptions.txt")
 		
 	# parse adpu lines
-	is_next_command = not just_responses
+	is_next_command = not responses_only
 
 	for apdu_line in apdu_lines:
 		apdu_line = apdu_line.strip()
@@ -193,7 +205,7 @@ def main():
 		if is_next_command:
 			desc,cla,ins,p1,p2,lc,le,data = parse_apdu_command(apdu_line, command_descriptions)
 			last_apdu_command = apdu_line
-			is_next_command = just_commands			
+			is_next_command = commands_only			
 			# show parsed results
 			show_apdu_command(desc, cla, ins, p1, p2, lc, le, data, colors)
 			# write output to output file
@@ -203,7 +215,7 @@ def main():
 		# apdu response
 		else:			
 			desc, category, sw1, sw2, data = parse_apdu_response(apdu_line, response_descriptions, last_apdu_command)
-			is_next_command = not just_responses	
+			is_next_command = not responses_only	
 			# show parsed results
 			show_apdu_response(desc, category, sw1, sw2, data, colors)
 			# write output to output file

@@ -15,15 +15,17 @@ Options:
   
   -o OUTPUT_FILE, --output=OUTPUT_FILE  specify output file
   
-  -c, --commands  specify if input file just contains APDU commands
+  -c, --commands  specify if input file contains only APDU commands
   
-  -r, --responses specify if input file just contains APDU responses
+  -r, --responses specify if input file contains only APDU responses
   
   -C COMMAND_DESCRIPTIONS, --command-descriptions=COMMAND_DESCRIPTIONS  specify custom command descriptions file
   
   -R RESPONSE_DESCRIPTIONS, --response-descriptions=RESPONSE_DESCRIPTIONS specify custom response descriptions file
+  
+  -T, --colors	show terminal output in different colors
 ```
-
+  
 # Examples
 
 Basic usage:
@@ -52,9 +54,8 @@ Setting custom command responses file:
 
 Show output results in differents colors in terminal (just works in Linux / Mac):
 
-<code>python apdu_parser.py -i sample_files/default_log.txt -T
-
+<code>python apdu_parser.py -i sample_files/default_log.txt -T</code>
 
 ## Requirements
 
-To properly run the apdu-parser, [Python](http://www.python.org/download/) **2.6.x** or **2.7.x** is required. 
+To properly run the apdu-parser, [Python](http://www.python.org/download/) **2.6.x** or **2.7.x** is required.
